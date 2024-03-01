@@ -297,7 +297,7 @@ func CheckAndMountCACertBundle(ctx context.Context, cli client.Client, notebook 
 
 		if err := certValidator(cm, "ca-bundle.crt", log); err == nil {
 			log.Info("Validating certificates for ca-bundle.crt")
-			CustomCAvolumeMounts := []corev1.VolumeMount{
+			customCAVolumeMounts := []corev1.VolumeMount{
 				{
 					Name:      volumeName,
 					MountPath: caVolumeMountPath,
@@ -305,14 +305,14 @@ func CheckAndMountCACertBundle(ctx context.Context, cli client.Client, notebook 
 					ReadOnly:  true,
 				},
 			}
-			volumeMounts = append(volumeMounts, CustomCAvolumeMounts...)
+			volumeMounts = append(volumeMounts, customCAVolumeMounts...)
 		} else {
 			log.Error(err, "Error validating certificates for ca-bundle.crt")
 		}
 
 		if err := certValidator(cm, "odh-ca-bundle.crt", log); err == nil {
 			log.Info("Validating certificates for odh-ca-bundle.crt")
-			CustomODHCAvolumeMountsvolumeMounts := []corev1.VolumeMount{
+			customODHCAVolumeMounts := []corev1.VolumeMount{
 				{
 					Name:      volumeName,
 					MountPath: odhVolumeMountPath,
@@ -320,7 +320,7 @@ func CheckAndMountCACertBundle(ctx context.Context, cli client.Client, notebook 
 					ReadOnly:  true,
 				},
 			}
-			volumeMounts = append(volumeMounts, CustomODHCAvolumeMountsvolumeMounts...)
+			volumeMounts = append(volumeMounts, customODHCAVolumeMounts...)
 		} else {
 			log.Error(err, "Error validating certificates for odh-ca-bundle.crt")
 		}
