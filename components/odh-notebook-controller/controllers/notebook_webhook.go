@@ -34,6 +34,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
+const (
+	WorkbenchLabel = "opendatahub.io/workbenches"
+)
+
 //+kubebuilder:webhook:path=/mutate-notebook-v1,mutating=true,failurePolicy=fail,sideEffects=None,groups=kubeflow.org,resources=notebooks,verbs=create;update,versions=v1,name=notebooks.opendatahub.io,admissionReviewVersions=v1
 
 // NotebookWebhook holds the webhook configuration.
@@ -234,8 +238,9 @@ func (w *NotebookWebhook) Handle(ctx context.Context, req admission.Request) adm
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	// Inject the the reconciliation lock only on new notebook creation
+	// Inject the reconciliation lock only on new notebook creation
 	if req.Operation == admissionv1.Create {
+		AddWorkbenchLabel(notebook)
 		err = InjectReconciliationLock(&notebook.ObjectMeta)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
@@ -246,6 +251,11 @@ func (w *NotebookWebhook) Handle(ctx context.Context, req admission.Request) adm
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
+	}
+
+	// Add the workbench label on notebook update
+	if req.Operation == admissionv1.Update {
+		AddWorkbenchLabel(notebook)
 	}
 
 	// Inject the OAuth proxy if the annotation is present
@@ -269,6 +279,13 @@ func (w *NotebookWebhook) Handle(ctx context.Context, req admission.Request) adm
 func (w *NotebookWebhook) InjectDecoder(d *admission.Decoder) error {
 	w.Decoder = d
 	return nil
+}
+
+// AddWorkbenchLabel adds an exclusive static label to the Notebook pods
+func AddWorkbenchLabel(notebook *nbv1.Notebook) {
+	currentLabels := notebook.ObjectMeta.GetLabels()
+	notebook.ObjectMeta.Labels[WorkbenchLabel] = "true"
+	notebook.ObjectMeta.SetLabels(currentLabels)
 }
 
 // CheckAndMountCACertBundle checks if the odh-trusted-ca-bundle ConfigMap is present
