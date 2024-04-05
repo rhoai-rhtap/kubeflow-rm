@@ -51,6 +51,7 @@ const DefaultServingPort = 80
 const AnnotationRewriteURI = "notebooks.kubeflow.org/http-rewrite-uri"
 const AnnotationHeadersRequestSet = "notebooks.kubeflow.org/http-headers-request-set"
 const AnnotationNotebookRestart = "notebooks.opendatahub.io/notebook-restart"
+const WorkbenchLabel = "opendatahub.io/workbenches"
 
 const PrefixEnvVar = "NB_PREFIX"
 
@@ -158,6 +159,15 @@ func (r *NotebookReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		log.Error(err, "error getting Statefulset")
 		return ctrl.Result{}, err
 	}
+
+	// Copy the pod template labels, but reconcilation is not required
+	// exclusively based on ths pod template labels
+	if *ss.Spec.Replicas != *foundStateful.Spec.Replicas {
+		if !reflect.DeepEqual(foundStateful.Spec.Template.ObjectMeta.Labels, ss.Spec.Template.ObjectMeta.Labels) {
+			foundStateful.Spec.Template.ObjectMeta.Labels = ss.Spec.Template.ObjectMeta.Labels
+		}
+	}
+
 	// Update the foundStateful object and write the result back if there are any changes
 	if !justCreated && reconcilehelper.CopyStatefulSetFields(ss, foundStateful) {
 		log.Info("Updating StatefulSet", "namespace", ss.Namespace, "name", ss.Name)
@@ -417,6 +427,7 @@ func generateStatefulSet(instance *v1beta1.Notebook) *appsv1.StatefulSet {
 				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
 					"statefulset":   instance.Name,
 					"notebook-name": instance.Name,
+					WorkbenchLabel:  "true",
 				}},
 				Spec: *instance.Spec.Template.Spec.DeepCopy(),
 			},

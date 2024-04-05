@@ -34,10 +34,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-const (
-	WorkbenchLabel = "opendatahub.io/workbenches"
-)
-
 //+kubebuilder:webhook:path=/mutate-notebook-v1,mutating=true,failurePolicy=fail,sideEffects=None,groups=kubeflow.org,resources=notebooks,verbs=create;update,versions=v1,name=notebooks.opendatahub.io,admissionReviewVersions=v1
 
 // NotebookWebhook holds the webhook configuration.
@@ -240,7 +236,6 @@ func (w *NotebookWebhook) Handle(ctx context.Context, req admission.Request) adm
 
 	// Inject the reconciliation lock only on new notebook creation
 	if req.Operation == admissionv1.Create {
-		AddWorkbenchLabel(notebook)
 		err = InjectReconciliationLock(&notebook.ObjectMeta)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
@@ -281,13 +276,6 @@ func (w *NotebookWebhook) InjectDecoder(d *admission.Decoder) error {
 	return nil
 }
 
-// AddWorkbenchLabel adds an exclusive static label to the Notebook pods
-func AddWorkbenchLabel(notebook *nbv1.Notebook) {
-	currentLabels := notebook.ObjectMeta.GetLabels()
-	notebook.ObjectMeta.Labels[WorkbenchLabel] = "true"
-	notebook.ObjectMeta.SetLabels(currentLabels)
-}
-
 // CheckAndMountCACertBundle checks if the odh-trusted-ca-bundle ConfigMap is present
 func CheckAndMountCACertBundle(ctx context.Context, cli client.Client, notebook *nbv1.Notebook, log logr.Logger) error {
 
@@ -308,8 +296,24 @@ func CheckAndMountCACertBundle(ctx context.Context, cli client.Client, notebook 
 	workbenchConfigMap := &corev1.ConfigMap{}
 	err := cli.Get(ctx, client.ObjectKey{Namespace: notebook.Namespace, Name: workbenchConfigMapName}, workbenchConfigMap)
 	if err != nil {
-		log.Info("workbench-trusted-ca-bundle ConfigMap is not present, skipping mounting of certificates.")
-		return nil
+		log.Info("workbench-trusted-ca-bundle ConfigMap is not present, start creating it...")
+		// create the ConfigMap if it does not exist
+		workbenchConfigMap = &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      workbenchConfigMapName,
+				Namespace: notebook.Namespace,
+				Labels:    map[string]string{"opendatahub.io/managed-by": "workbenches"},
+			},
+			Data: map[string]string{
+				"ca-bundle.crt": odhConfigMap.Data["ca-bundle.crt"],
+			},
+		}
+		err = cli.Create(ctx, workbenchConfigMap)
+		if err != nil {
+			log.Info("Failed to create workbench-trusted-ca-bundle ConfigMap")
+			return nil
+		}
+		log.Info("Created workbench-trusted-ca-bundle ConfigMap")
 	}
 
 	cm := workbenchConfigMap
