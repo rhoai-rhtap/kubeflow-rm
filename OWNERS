@@ -1,8 +1,15 @@
 approvers:
-  - LavLas
-  - VaishnaviHire
+  - atheo89
   - harshad16
+
 reviewers:
-  - LavLas
-  - VaishnaviHire
+  - atheo89
+  - dibryant
   - harshad16
+  - jiridanek
+  - jstourac
+  - rkpattnaik780
+
+emeritus_approvers:
+  - VaishnaviHire
+  - LavLas
