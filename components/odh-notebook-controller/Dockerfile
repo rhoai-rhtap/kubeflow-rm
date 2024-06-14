@@ -55,6 +55,6 @@ COPY --from=builder /workspace/odh-notebook-controller/bin/manager /manager
 COPY --from=builder /workspace/odh-notebook-controller/third_party/license.txt third_party/license.txt
 
 ## Switch to a non-root user
-USER rhods
+USER 1001:0
 
 ENTRYPOINT [ "/manager" ]
