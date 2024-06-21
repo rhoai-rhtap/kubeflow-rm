@@ -501,7 +501,7 @@ func SetContainerImageFromRegistry(ctx context.Context, config *rest.Config, not
 							// List imagestreams in the specified namespace
 							imagestreams, err := dynamicClient.Resource(ims).Namespace(namespace).List(ctx, metav1.ListOptions{})
 							if err != nil {
-								log.Error(err, "Cannot list imagestreams", "namespace", namespace)
+								log.Info("Cannot list imagestreams", "error", err)
 								continue
 							}
 
