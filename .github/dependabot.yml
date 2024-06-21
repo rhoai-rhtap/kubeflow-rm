@@ -22,6 +22,10 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "fix(deps)"
+    # https://docs.github.com/en/code-security/dependabot/dependabot-security-updates/configuring-dependabot-security-updates#overriding-the-default-behavior-with-a-configuration-file
+    groups:
+      go:
+        applies-to: security-updates
 
   - package-ecosystem: "gomod"
     open-pull-requests-limit: 0
@@ -30,3 +34,6 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "fix(deps)"
+    groups:
+      go:
+        applies-to: security-updates
