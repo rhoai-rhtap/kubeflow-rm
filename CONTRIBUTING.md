@@ -1,13 +1,4 @@
-# Kubeflow Contributor Guide
+### Review and Merge Process
 
-Welcome to the Kubeflow project! We'd love to accept your patches and 
-contributions to this project. Please read the 
-[contributor's guide in our docs](https://www.kubeflow.org/docs/about/contributing/).
-
-The contributor's guide
-
-* shows you where to find the Contributor License Agreement (CLA) that you need 
-  to sign,
-* helps you get started with your first contribution to Kubeflow,
-* and describes the pull request and review workflow in detail, including the
-  OWNERS files and automated workflow tool.
+- Once the PR is submitted, you can either select specific reviewers or let the bot to select reviewers [automatically](https://prow.ci.openshift.org/plugins?repo=opendatahub-io%2Fnotebooks).
+- For the PR to be merged, it must receive 2 reviews from the repository [approvals/reviewers](/OWNERS). Following that, an `/approve` comment must be added by someone with approval rights. If the author of the PR has approval rights, it is preferred that they perform the merge action.
