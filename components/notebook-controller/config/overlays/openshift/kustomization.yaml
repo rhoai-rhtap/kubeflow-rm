@@ -7,10 +7,8 @@ commonLabels:
   app.kubernetes.io/part-of: odh-notebook-controller
   component.opendatahub.io/name: kf-notebook-controller
   opendatahub.io/component: "true"
-
 configurations:
   - params.yaml
-
 configMapGenerator:
   - name: kf-notebook-controller-image-parameters
     env: params.env
@@ -25,7 +23,6 @@ patchesStrategicMerge:
   - remove_namespace_patch.yaml
   - manager_openshift_patch.yaml
   - manager_service_openshift_patch.yaml
-
 vars:
 - name: odh-kf-notebook-controller-image
   objref:
