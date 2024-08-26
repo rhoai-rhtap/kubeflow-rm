@@ -247,17 +247,18 @@ func (w *NotebookWebhook) Handle(ctx context.Context, req admission.Request) adm
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
 
-		// Only Mount ca bundle on new notebook creation
-		err = CheckAndMountCACertBundle(ctx, w.Client, notebook, log)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError, err)
-		}
 	}
 
 	// Check Imagestream Info both on create and update operations
 	if req.Operation == admissionv1.Create || req.Operation == admissionv1.Update {
 		// Check Imagestream Info
 		err = SetContainerImageFromRegistry(ctx, w.Config, notebook, log)
+		if err != nil {
+			return admission.Errored(http.StatusInternalServerError, err)
+		}
+
+		// Mount ca bundle on notebook creation and update
+		err = CheckAndMountCACertBundle(ctx, w.Client, notebook, log)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
