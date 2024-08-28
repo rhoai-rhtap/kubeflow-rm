@@ -170,31 +170,35 @@ var _ = Describe("The Openshift Notebook controller", func() {
 			}, timeout, interval).Should(HaveOccurred())
 		})
 
-		It("Should mount a trusted-ca if exists on the given namespace", func() {
+	})
+
+	// New test case for notebook creation
+	When("Creating a Notebook, test certificate is mounted", func() {
+		const (
+			Name      = "test-notebook"
+			Namespace = "default"
+		)
+
+		It("Should mount a trusted-ca when it exists on the given namespace", func() {
 			ctx := context.Background()
 			logger := logr.Discard()
 
 			By("By simulating the existence of odh-trusted-ca-bundle ConfigMap")
 			// Create a ConfigMap similar to odh-trusted-ca-bundle for simulation
 			workbenchTrustedCACertBundle := "workbench-trusted-ca-bundle"
-			trustedCACertBundle := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "odh-trusted-ca-bundle",
-					Namespace: "default",
-					Labels: map[string]string{
-						"config.openshift.io/inject-trusted-cabundle": "true",
-					},
+			trustedCACertBundle := createOAuthConfigmap(
+				"odh-trusted-ca-bundle",
+				"default",
+				map[string]string{
+					"config.openshift.io/inject-trusted-cabundle": "true",
 				},
-				Data: map[string]string{
-					"ca-bundle.crt":     "-----BEGIN CERTIFICATE-----\n<base64-encoded-cert-data>\n-----END CERTIFICATE-----",
-					"odh-ca-bundle.crt": "-----BEGIN CERTIFICATE-----\n<base64-encoded-cert-data>\n-----END CERTIFICATE-----",
-				},
-			}
+				map[string]string{
+					"ca-bundle.crt":     "-----BEGIN CERTIFICATE-----\nMIIB8jCCAXigAwIBAgITBmyf18G7EEwpQ+Vxe3ssyBrBDjAKBggqhkjOPQQDAzA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6b24gUm9vdCBDQSA0MB4XDTE1MDUyNjAwMDAwMFoXDTQwMDUyNjAwMDAwMFowOTELMAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJvb3QgQ0EgNDB2MBAGByqGSM49AgEGBSuBBAAiA2IABNKrijdPo1MN/sGKe0uoe0ZLY7Bi9i0b2whxIdIA6GO9mif78DluXeo9pcmBqqNbIJhFXRbb/egQbeOc4OO9X4Ri83BkM6DLJC9wuoihKqB1+IGuYgbEgds5bimwHvouXKNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAYYwHQYDVR0OBBYEFNPsxzplbszh2naaVvuc84ZtV+WBMAoGCCqGSM49BAMDA2gAMGUCMDqLIfG9fhGt0O9Yli/W651+kI0rz2ZVwyzjKKlwCkcO8DdZEv8tmZQoTipPNU0zWgIxAOp1AE47xDqUEpHJWEadIRNyp4iciuRMStuW1KyLa2tJElMzrdfkviT8tQp21KW8EA==\n-----END CERTIFICATE-----",
+					"odh-ca-bundle.crt": "-----BEGIN CERTIFICATE-----\nMIIB8jCCAXigAwIBAgITBmyf18G7EEwpQ+Vxe3ssyBrBDjAKBggqhkjOPQQDAzA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6b24gUm9vdCBDQSA0MB4XDTE1MDUyNjAwMDAwMFoXDTQwMDUyNjAwMDAwMFowOTELMAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJvb3QgQ0EgNDB2MBAGByqGSM49AgEGBSuBBAAiA2IABNKrijdPo1MN/sGKe0uoe0ZLY7Bi9i0b2whxIdIA6GO9mif78DluXeo9pcmBqqNbIJhFXRbb/egQbeOc4OO9X4Ri83BkM6DLJC9wuoihKqB1+IGuYgbEgds5bimwHvouXKNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAYYwHQYDVR0OBBYEFNPsxzplbszh2naaVvuc84ZtV+WBMAoGCCqGSM49BAMDA2gAMGUCMDqLIfG9fhGt0O9Yli/W651+kI0rz2ZVwyzjKKlwCkcO8DdZEv8tmZQoTipPNU0zWgIxAOp1AE47xDqUEpHJWEadIRNyp4iciuRMStuW1KyLa2tJElMzrdfkviT8tQp21KW8EA==\n-----END CERTIFICATE-----",
+				})
+
 			// Create the ConfigMap
-			if err := cli.Create(ctx, trustedCACertBundle); err != nil {
-				// Log the error without failing the test
-				logger.Info("Error occurred during creation of ConfigMap: %v", err)
-			}
+			Expect(cli.Create(ctx, trustedCACertBundle)).Should(Succeed())
 			defer func() {
 				// Clean up the ConfigMap after the test
 				if err := cli.Delete(ctx, trustedCACertBundle); err != nil {
@@ -203,14 +207,12 @@ var _ = Describe("The Openshift Notebook controller", func() {
 				}
 			}()
 
-			By("By checking and mounting the trusted-ca bundle")
-			// Invoke the function to mount the CA certificate bundle
-			err := CheckAndMountCACertBundle(ctx, cli, notebook, logger)
-			if err != nil {
-				// Log the error without failing the test
-				logger.Info("Error occurred during mounting CA certificate bundle: %v", err)
-			}
+			By("By creating a new Notebook")
+			notebook := createNotebook(Name, Namespace)
+			Expect(cli.Create(ctx, notebook)).Should(Succeed())
+			time.Sleep(interval)
 
+			By("By checking that trusted-ca bundle is mounted")
 			// Assert that the volume mount and volume are added correctly
 			volumeMountPath := "/etc/pki/tls/custom-certs/ca-bundle.crt"
 			expectedVolumeMount := corev1.VolumeMount{
@@ -219,13 +221,8 @@ var _ = Describe("The Openshift Notebook controller", func() {
 				SubPath:   "ca-bundle.crt",
 				ReadOnly:  true,
 			}
-			if len(notebook.Spec.Template.Spec.Containers[0].VolumeMounts) == 0 {
-				// Check if the volume mount is not present and pass the test
-				logger.Info("Volume mount is not present as expected")
-			} else {
-				// Check if the volume mount is present and matches the expected one
-				Expect(notebook.Spec.Template.Spec.Containers[0].VolumeMounts).To(ContainElement(expectedVolumeMount))
-			}
+			// Check if the volume mount is present and matches the expected one
+			Expect(notebook.Spec.Template.Spec.Containers[0].VolumeMounts).To(ContainElement(expectedVolumeMount))
 
 			expectedVolume := corev1.Volume{
 				Name: "trusted-ca",
@@ -242,13 +239,8 @@ var _ = Describe("The Openshift Notebook controller", func() {
 					},
 				},
 			}
-			if len(notebook.Spec.Template.Spec.Volumes) == 0 {
-				// Check if the volume is not present and pass the test
-				logger.Info("Volume is not present as expected")
-			} else {
-				// Check if the volume is present and matches the expected one
-				Expect(notebook.Spec.Template.Spec.Volumes).To(ContainElement(expectedVolume))
-			}
+			// Check if the volume is present and matches the expected one
+			Expect(notebook.Spec.Template.Spec.Volumes).To(ContainElement(expectedVolume))
 		})
 
 	})
@@ -283,6 +275,71 @@ var _ = Describe("The Openshift Notebook controller", func() {
 				Expect(cli.Get(ctx, key, notebook)).Should(Succeed())
 				return notebook.Spec.Template.Spec.Containers[0].Image
 			}, timeout, interval).Should(Equal(updatedImage))
+		})
+
+		It("When notebook CR is updated, should mount a trusted-ca if it exists on the given namespace", func() {
+			ctx := context.Background()
+			logger := logr.Discard()
+
+			By("By simulating the existence of odh-trusted-ca-bundle ConfigMap")
+			// Create a ConfigMap similar to odh-trusted-ca-bundle for simulation
+			workbenchTrustedCACertBundle := "workbench-trusted-ca-bundle"
+			trustedCACertBundle := createOAuthConfigmap(
+				"odh-trusted-ca-bundle",
+				"default",
+				map[string]string{
+					"config.openshift.io/inject-trusted-cabundle": "true",
+				},
+				map[string]string{
+					"ca-bundle.crt":     "-----BEGIN CERTIFICATE-----\nMIIB8jCCAXigAwIBAgITBmyf18G7EEwpQ+Vxe3ssyBrBDjAKBggqhkjOPQQDAzA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6b24gUm9vdCBDQSA0MB4XDTE1MDUyNjAwMDAwMFoXDTQwMDUyNjAwMDAwMFowOTELMAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJvb3QgQ0EgNDB2MBAGByqGSM49AgEGBSuBBAAiA2IABNKrijdPo1MN/sGKe0uoe0ZLY7Bi9i0b2whxIdIA6GO9mif78DluXeo9pcmBqqNbIJhFXRbb/egQbeOc4OO9X4Ri83BkM6DLJC9wuoihKqB1+IGuYgbEgds5bimwHvouXKNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAYYwHQYDVR0OBBYEFNPsxzplbszh2naaVvuc84ZtV+WBMAoGCCqGSM49BAMDA2gAMGUCMDqLIfG9fhGt0O9Yli/W651+kI0rz2ZVwyzjKKlwCkcO8DdZEv8tmZQoTipPNU0zWgIxAOp1AE47xDqUEpHJWEadIRNyp4iciuRMStuW1KyLa2tJElMzrdfkviT8tQp21KW8EA==\n-----END CERTIFICATE-----",
+					"odh-ca-bundle.crt": "-----BEGIN CERTIFICATE-----\nMIIB8jCCAXigAwIBAgITBmyf18G7EEwpQ+Vxe3ssyBrBDjAKBggqhkjOPQQDAzA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6b24gUm9vdCBDQSA0MB4XDTE1MDUyNjAwMDAwMFoXDTQwMDUyNjAwMDAwMFowOTELMAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJvb3QgQ0EgNDB2MBAGByqGSM49AgEGBSuBBAAiA2IABNKrijdPo1MN/sGKe0uoe0ZLY7Bi9i0b2whxIdIA6GO9mif78DluXeo9pcmBqqNbIJhFXRbb/egQbeOc4OO9X4Ri83BkM6DLJC9wuoihKqB1+IGuYgbEgds5bimwHvouXKNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAYYwHQYDVR0OBBYEFNPsxzplbszh2naaVvuc84ZtV+WBMAoGCCqGSM49BAMDA2gAMGUCMDqLIfG9fhGt0O9Yli/W651+kI0rz2ZVwyzjKKlwCkcO8DdZEv8tmZQoTipPNU0zWgIxAOp1AE47xDqUEpHJWEadIRNyp4iciuRMStuW1KyLa2tJElMzrdfkviT8tQp21KW8EA==\n-----END CERTIFICATE-----",
+				})
+			// Create the ConfigMap
+			Expect(cli.Create(ctx, trustedCACertBundle)).Should(Succeed())
+			defer func() {
+				// Clean up the ConfigMap after the test
+				if err := cli.Delete(ctx, trustedCACertBundle); err != nil {
+					// Log the error without failing the test
+					logger.Info("Error occurred during deletion of ConfigMap: %v", err)
+				}
+			}()
+
+			By("By updating the Notebook's image")
+			key := types.NamespacedName{Name: Name, Namespace: Namespace}
+			Expect(cli.Get(ctx, key, notebook)).Should(Succeed())
+
+			updatedImage := "registry.redhat.io/ubi8/ubi:updated"
+			notebook.Spec.Template.Spec.Containers[0].Image = updatedImage
+			Expect(cli.Update(ctx, notebook)).Should(Succeed())
+			time.Sleep(interval)
+
+			By("By checking that trusted-ca bundle is mounted")
+			// Assert that the volume mount and volume are added correctly
+			volumeMountPath := "/etc/pki/tls/custom-certs/ca-bundle.crt"
+			expectedVolumeMount := corev1.VolumeMount{
+				Name:      "trusted-ca",
+				MountPath: volumeMountPath,
+				SubPath:   "ca-bundle.crt",
+				ReadOnly:  true,
+			}
+			Expect(notebook.Spec.Template.Spec.Containers[0].VolumeMounts).To(ContainElement(expectedVolumeMount))
+
+			expectedVolume := corev1.Volume{
+				Name: "trusted-ca",
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{Name: workbenchTrustedCACertBundle},
+						Optional:             pointer.Bool(true),
+						Items: []corev1.KeyToPath{
+							{
+								Key:  "ca-bundle.crt",
+								Path: "ca-bundle.crt",
+							},
+						},
+					},
+				},
+			}
+			Expect(notebook.Spec.Template.Spec.Volumes).To(ContainElement(expectedVolume))
 		})
 	})
 
@@ -918,5 +975,18 @@ func createNotebook(name, namespace string) *nbv1.Notebook {
 					Image: "registry.redhat.io/ubi8/ubi:latest",
 				}}}},
 		},
+	}
+}
+
+// createOAuthConfigmap creates a ConfigMap
+// this function can be used to create any kinda of ConfigMap
+func createOAuthConfigmap(name, namespace string, label map[string]string, configMapData map[string]string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    label,
+		},
+		Data: configMapData,
 	}
 }
