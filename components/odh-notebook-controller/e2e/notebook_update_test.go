@@ -22,6 +22,9 @@ func updateTestSuite(t *testing.T) {
 				require.NoError(t, err, "error updating Notebook object ")
 			})
 			t.Run("Notebook Route Validation After Update", func(t *testing.T) {
+				if deploymentMode == ServiceMesh {
+					t.Skipf("Skipping as it's not relevant for Service Mesh scenario")
+				}
 				err = testCtx.testNotebookRouteCreation(nbContext.nbObjectMeta)
 				require.NoError(t, err, "error testing Route for Notebook after update ")
 			})
@@ -37,6 +40,9 @@ func updateTestSuite(t *testing.T) {
 			})
 
 			t.Run("Notebook OAuth sidecar Validation After Update", func(t *testing.T) {
+				if deploymentMode == ServiceMesh {
+					t.Skipf("Skipping as it's not relevant for Service Mesh scenario")
+				}
 				err = testCtx.testNotebookOAuthSidecar(nbContext.nbObjectMeta)
 				require.NoError(t, err, "error testing sidecar for Notebook after update ")
 			})
