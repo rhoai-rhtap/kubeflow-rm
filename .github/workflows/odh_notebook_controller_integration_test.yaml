@@ -271,6 +271,8 @@ jobs:
                         port: notebook-port
           EOF
 
+          # wait for the statefulset to be created
+          timeout 100 bash -c -- 'until kubectl get statefulset minimal-notebook; do sleep 1; done'
           # wait for the good result
           kubectl rollout status --watch statefulset minimal-notebook
           kubectl wait statefulset minimal-notebook --for=jsonpath='{.spec.replicas}'=1 --timeout=100s
