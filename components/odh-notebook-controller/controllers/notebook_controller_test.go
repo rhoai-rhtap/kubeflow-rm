@@ -17,6 +17,8 @@ package controllers
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"io/ioutil"
 	"strings"
 	"time"
@@ -230,6 +232,12 @@ var _ = Describe("The Openshift Notebook controller", func() {
 			}
 			// Check if the volume is present and matches the expected one
 			Expect(notebook.Spec.Template.Spec.Volumes).To(ContainElement(expectedVolume))
+
+			// Check the content in workbench-trusted-ca-bundle matches what we expect:
+			//   - have 2 certificates there in ca-bundle.crt
+			//   - both certificates are valid
+			configMapName := "workbench-trusted-ca-bundle"
+			checkCertConfigMap(ctx, notebook.Namespace, configMapName, "ca-bundle.crt", 2)
 		})
 
 	})
@@ -329,6 +337,12 @@ var _ = Describe("The Openshift Notebook controller", func() {
 				},
 			}
 			Expect(notebook.Spec.Template.Spec.Volumes).To(ContainElement(expectedVolume))
+
+			// Check the content in workbench-trusted-ca-bundle matches what we expect:
+			//   - have 2 certificates there in ca-bundle.crt
+			//   - both certificates are valid
+			configMapName := "workbench-trusted-ca-bundle"
+			checkCertConfigMap(ctx, notebook.Namespace, configMapName, "ca-bundle.crt", 2)
 		})
 	})
 
@@ -1038,4 +1052,33 @@ func createOAuthConfigmap(name, namespace string, label map[string]string, confi
 		},
 		Data: configMapData,
 	}
+}
+
+// checkCertConfigMap checks the content of a config map defined by the name and namespace
+// It triest to parse the given certFileName and checks that all certificates can be parsed there and that the number of the certificates matches what we expect.
+func checkCertConfigMap(ctx context.Context, namespace string, configMapName string, certFileName string, expNumberCerts int) {
+	configMap := &corev1.ConfigMap{}
+	key := types.NamespacedName{Namespace: namespace, Name: configMapName}
+	Expect(cli.Get(ctx, key, configMap)).Should(Succeed())
+
+	// Attempt to decode PEM encoded certificates so we are sure all are readable as expected
+	certData := configMap.Data[certFileName]
+	certDataByte := []byte(certData)
+	certificatesFound := 0
+	for len(certDataByte) > 0 {
+		block, remainder := pem.Decode(certDataByte)
+		certDataByte = remainder
+
+		if block == nil {
+			break
+		}
+
+		if block.Type == "CERTIFICATE" {
+			// Attempt to parse the certificate
+			_, err := x509.ParseCertificate(block.Bytes)
+			Expect(err).ShouldNot(HaveOccurred())
+			certificatesFound++
+		}
+	}
+	Expect(certificatesFound).Should(Equal(expNumberCerts), "Number of parsed certificates don't match expected one:\n"+certData)
 }
