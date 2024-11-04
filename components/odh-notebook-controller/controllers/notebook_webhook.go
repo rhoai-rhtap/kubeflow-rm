@@ -28,6 +28,7 @@ import (
 	"github.com/kubeflow/kubeflow/components/notebook-controller/pkg/culler"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -275,8 +276,21 @@ func (w *NotebookWebhook) Handle(ctx context.Context, req admission.Request) adm
 		}
 	}
 
+	// RHOAIENG-14552: Running notebook cannot be updated carelessly, or we may end up restarting the pod when
+	// the webhook runs after e.g. the oauth-proxy image has been updated
+	mutatedNotebook, needsRestart, err := w.maybeRestartRunningNotebook(req, notebook)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
+	}
+	updatePendingAnnotation := "notebooks.opendatahub.io/update-pending"
+	if needsRestart {
+		mutatedNotebook.ObjectMeta.Annotations[updatePendingAnnotation] = "true"
+	} else {
+		mutatedNotebook.ObjectMeta.Annotations[updatePendingAnnotation] = "false"
+	}
+
 	// Create the mutated notebook object
-	marshaledNotebook, err := json.Marshal(notebook)
+	marshaledNotebook, err := json.Marshal(mutatedNotebook)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
@@ -288,6 +302,58 @@ func (w *NotebookWebhook) Handle(ctx context.Context, req admission.Request) adm
 func (w *NotebookWebhook) InjectDecoder(d *admission.Decoder) error {
 	w.Decoder = d
 	return nil
+}
+
+// maybeRestartRunningNotebook evaluates whether the updates being made cause notebook pod to restart.
+// If the restart is caused by updates made by the mutating webhook itself to already existing notebook,
+// and the notebook is not stopped, then these updates will be blocked until the notebook is stopped.
+// Returns the mutated notebook, a flag whether there's a pending restart (to apply blocked updates), and an error value.
+func (w *NotebookWebhook) maybeRestartRunningNotebook(req admission.Request, mutatedNotebook *nbv1.Notebook) (*nbv1.Notebook, bool, error) {
+	var err error
+
+	// Notebook that was just created can be updated
+	if req.Operation == admissionv1.Create {
+		return mutatedNotebook, false, nil
+	}
+
+	// Stopped notebooks are ok to update
+	if metav1.HasAnnotation(mutatedNotebook.ObjectMeta, "kubeflow-resource-stopped") {
+		return mutatedNotebook, false, nil
+	}
+
+	// Restarting notebooks are also ok to update
+	if metav1.HasAnnotation(mutatedNotebook.ObjectMeta, "notebooks.opendatahub.io/notebook-restart") {
+		return mutatedNotebook, false, nil
+	}
+
+	// fetch the updated Notebook CR that was sent to the Webhook
+	updatedNotebook := &nbv1.Notebook{}
+	err = w.Decoder.Decode(req, updatedNotebook)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// fetch the original Notebook CR
+	oldNotebook := &nbv1.Notebook{}
+	err = w.Decoder.DecodeRaw(req.OldObject, oldNotebook)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// The externally issued update already causes a restart, so we will just let all changes proceed
+	if !equality.Semantic.DeepEqual(oldNotebook.Spec.Template.Spec, updatedNotebook.Spec.Template.Spec) {
+		return mutatedNotebook, false, nil
+	}
+
+	// Nothing about the Pod definition is actually changing and we can proceed
+	if equality.Semantic.DeepEqual(oldNotebook.Spec.Template.Spec, mutatedNotebook.Spec.Template.Spec) {
+		return mutatedNotebook, false, nil
+	}
+
+	// Now we know we have to block the update
+	// Keep the old values and mark the Notebook as UpdatesPending
+	mutatedNotebook.Spec.Template.Spec = updatedNotebook.Spec.Template.Spec
+	return mutatedNotebook, true, nil
 }
 
 // CheckAndMountCACertBundle checks if the odh-trusted-ca-bundle ConfigMap is present
