@@ -32,7 +32,7 @@ var (
 	NoPendingUpdates = &UpdatesPending{}
 )
 
-// FirstDifferenceReporter is a custom reporter that only records the first difference.
+// FirstDifferenceReporter is a custom go-cmp reporter that only records the first difference.
 type FirstDifferenceReporter struct {
 	path cmp.Path
 	diff string
@@ -57,6 +57,7 @@ func (r *FirstDifferenceReporter) String() string {
 	return r.diff
 }
 
+// getStructDiff compares a and b, reporting the first difference it found in a human-readable single-line string.
 func getStructDiff(ctx context.Context, a any, b any) (result string) {
 	log := logr.FromContextOrDiscard(ctx)
 
