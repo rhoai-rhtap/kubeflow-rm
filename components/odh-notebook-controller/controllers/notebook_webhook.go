@@ -233,6 +233,7 @@ func (w *NotebookWebhook) Handle(ctx context.Context, req admission.Request) adm
 
 	// Initialize logger format
 	log := w.Log.WithValues("notebook", req.Name, "namespace", req.Namespace)
+	ctx = logr.NewContext(ctx, log)
 
 	notebook := &nbv1.Notebook{}
 
@@ -278,15 +279,15 @@ func (w *NotebookWebhook) Handle(ctx context.Context, req admission.Request) adm
 
 	// RHOAIENG-14552: Running notebook cannot be updated carelessly, or we may end up restarting the pod when
 	// the webhook runs after e.g. the oauth-proxy image has been updated
-	mutatedNotebook, needsRestart, err := w.maybeRestartRunningNotebook(req, notebook)
+	mutatedNotebook, needsRestart, err := w.maybeRestartRunningNotebook(ctx, req, notebook)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 	updatePendingAnnotation := "notebooks.opendatahub.io/update-pending"
-	if needsRestart {
-		mutatedNotebook.ObjectMeta.Annotations[updatePendingAnnotation] = "true"
+	if needsRestart != NoPendingUpdates {
+		mutatedNotebook.ObjectMeta.Annotations[updatePendingAnnotation] = needsRestart.Reason
 	} else {
-		mutatedNotebook.ObjectMeta.Annotations[updatePendingAnnotation] = "false"
+		delete(mutatedNotebook.ObjectMeta.Annotations, updatePendingAnnotation)
 	}
 
 	// Create the mutated notebook object
@@ -308,52 +309,62 @@ func (w *NotebookWebhook) InjectDecoder(d *admission.Decoder) error {
 // If the restart is caused by updates made by the mutating webhook itself to already existing notebook,
 // and the notebook is not stopped, then these updates will be blocked until the notebook is stopped.
 // Returns the mutated notebook, a flag whether there's a pending restart (to apply blocked updates), and an error value.
-func (w *NotebookWebhook) maybeRestartRunningNotebook(req admission.Request, mutatedNotebook *nbv1.Notebook) (*nbv1.Notebook, bool, error) {
+func (w *NotebookWebhook) maybeRestartRunningNotebook(ctx context.Context, req admission.Request, mutatedNotebook *nbv1.Notebook) (*nbv1.Notebook, *UpdatesPending, error) {
 	var err error
+	log := logr.FromContextOrDiscard(ctx)
 
 	// Notebook that was just created can be updated
 	if req.Operation == admissionv1.Create {
-		return mutatedNotebook, false, nil
+		log.Info("Not blocking update, notebook is being newly created")
+		return mutatedNotebook, NoPendingUpdates, nil
 	}
 
 	// Stopped notebooks are ok to update
 	if metav1.HasAnnotation(mutatedNotebook.ObjectMeta, "kubeflow-resource-stopped") {
-		return mutatedNotebook, false, nil
+		log.Info("Not blocking update, notebook is (to be) stopped")
+		return mutatedNotebook, NoPendingUpdates, nil
 	}
 
 	// Restarting notebooks are also ok to update
 	if metav1.HasAnnotation(mutatedNotebook.ObjectMeta, "notebooks.opendatahub.io/notebook-restart") {
-		return mutatedNotebook, false, nil
+		log.Info("Not blocking update, notebook is (to be) restarted")
+		return mutatedNotebook, NoPendingUpdates, nil
 	}
 
 	// fetch the updated Notebook CR that was sent to the Webhook
 	updatedNotebook := &nbv1.Notebook{}
 	err = w.Decoder.Decode(req, updatedNotebook)
 	if err != nil {
-		return nil, false, err
+		log.Error(err, "Failed to fetch the updated Notebook CR")
+		return nil, NoPendingUpdates, err
 	}
 
 	// fetch the original Notebook CR
 	oldNotebook := &nbv1.Notebook{}
 	err = w.Decoder.DecodeRaw(req.OldObject, oldNotebook)
 	if err != nil {
-		return nil, false, err
+		log.Error(err, "Failed to fetch the original Notebook CR")
+		return nil, NoPendingUpdates, err
 	}
 
 	// The externally issued update already causes a restart, so we will just let all changes proceed
 	if !equality.Semantic.DeepEqual(oldNotebook.Spec.Template.Spec, updatedNotebook.Spec.Template.Spec) {
-		return mutatedNotebook, false, nil
+		log.Info("Not blocking update, the externally issued update already modifies pod template, causing a restart")
+		return mutatedNotebook, NoPendingUpdates, nil
 	}
 
 	// Nothing about the Pod definition is actually changing and we can proceed
 	if equality.Semantic.DeepEqual(oldNotebook.Spec.Template.Spec, mutatedNotebook.Spec.Template.Spec) {
-		return mutatedNotebook, false, nil
+		log.Info("Not blocking update, the pod template is not being modified at all")
+		return mutatedNotebook, NoPendingUpdates, nil
 	}
 
 	// Now we know we have to block the update
 	// Keep the old values and mark the Notebook as UpdatesPending
+	diff := getStructDiff(ctx, mutatedNotebook.Spec.Template.Spec, updatedNotebook.Spec.Template.Spec)
+	log.Info("Update blocked, notebook pod template would be changed by the webhook", "diff", diff)
 	mutatedNotebook.Spec.Template.Spec = updatedNotebook.Spec.Template.Spec
-	return mutatedNotebook, true, nil
+	return mutatedNotebook, &UpdatesPending{Reason: diff}, nil
 }
 
 // CheckAndMountCACertBundle checks if the odh-trusted-ca-bundle ConfigMap is present
