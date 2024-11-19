@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"k8s.io/utils/ptr"
 	"net"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -106,6 +107,19 @@ var _ = BeforeSuite(func() {
 	cfg, err = envTest.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
+
+	if kubeconfigPath, found := os.LookupEnv("DEBUG_WRITE_KUBECONFIG"); found {
+		user := envtest.User{Name: "MasterOfTheSystems", Groups: []string{"system:masters"}}
+		authedUser, err := envTest.ControlPlane.AddUser(user, nil)
+		Expect(err).NotTo(HaveOccurred())
+		config, err := authedUser.KubeConfig()
+		Expect(err).NotTo(HaveOccurred())
+		err = os.WriteFile(kubeconfigPath, config, 0600)
+		Expect(err).NotTo(HaveOccurred())
+		GinkgoT().Logf("DEBUG_WRITE_KUBECONFIG is set, writing system:masters' Kubeconfig to %s", kubeconfigPath)
+	} else {
+		GinkgoT().Logf("DEBUG_WRITE_KUBECONFIG environment variable was not provided")
+	}
 
 	// Register API objects
 	scheme := runtime.NewScheme()
