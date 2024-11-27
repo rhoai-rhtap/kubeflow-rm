@@ -20,9 +20,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -432,12 +430,7 @@ var _ = Describe("The Openshift Notebook controller", func() {
 		notebook := createNotebook(Name, Namespace)
 
 		npProtocol := corev1.ProtocolTCP
-		testPodNamespace := "redhat-ods-applications"
-		if data, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
-			if ns := strings.TrimSpace(string(data)); len(ns) > 0 {
-				testPodNamespace = ns
-			}
-		}
+		testPodNamespace := odhNotebookControllerTestNamespace
 
 		expectedNotebookNetworkPolicy := netv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{
@@ -462,9 +455,9 @@ var _ = Describe("The Openshift Notebook controller", func() {
 						},
 						From: []netv1.NetworkPolicyPeer{
 							{
-								// Since for unit tests we do not have context,
-								// namespace will fallback to test pod namespace
-								// if run in CI or `redhat-ods-applications` if run locally
+								// Since for unit tests the controller does not run in a cluster pod,
+								// it cannot detect its own pod's namespace. Therefore, we define it
+								// to be `redhat-ods-applications` (in suite_test.go)
 								NamespaceSelector: &metav1.LabelSelector{
 									MatchLabels: map[string]string{
 										"kubernetes.io/metadata.name": testPodNamespace,
